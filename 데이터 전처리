@@ -1,1 +1,54 @@
+import mne
+import os
+import glob
+import tkinter as tk
+from tkinter import filedialog
 
+root = tk.Tk()
+root.withdraw()  # Tkinter GUI 창 숨기기
+
+folder_path = filedialog.askdirectory(title="폴더 선택")
+print("선택한 폴더:", folder_path)
+# 폴더 경로 지정 (사용자가 직접 입력)
+
+# 폴더 내 모든 .vhdr 파일 찾기
+vhdr_files = glob.glob(os.path.join(folder_path, "*.vhdr"))
+
+# 파일이 있는지 확인
+if not vhdr_files:
+    print("No .vhdr files found in the folder.")
+else:
+    print(f"Found {len(vhdr_files)} files:", vhdr_files)
+
+    # 데이터 저장할 딕셔너리
+    raw_data = {}
+
+    for file in vhdr_files:
+        # 파일 이름에서 확장자 제거 (키 값으로 사용)
+        file_key = os.path.basename(file).replace(".vhdr", "")
+        print(f"Loading {file_key}...")
+
+        # 데이터 로드
+        raw = mne.io.read_raw_brainvision(file, preload=True)
+
+        # 1. 기본 밴드패스 필터 (0.5Hz ~ 55Hz)
+        raw.filter(l_freq=0.5, h_freq=55, method='fir', fir_design='firwin')
+
+        # 2. 필터 뱅크 적용
+        freq_bands = [(0.5, 4), (4, 8), (8, 15), (15, 30), (30, 50)]
+        filtered_data = {}
+
+        for band in freq_bands:
+            l_freq, h_freq = band
+            raw_band = raw.copy().filter(l_freq=l_freq, h_freq=h_freq, method='fir', fir_design='firwin')
+            filtered_data[f"{l_freq}-{h_freq}Hz"] = raw_band
+
+        # 원본 및 필터링된 데이터 저장
+        raw_data[file_key] = {"raw": raw, "filtered": filtered_data}
+        for file_key, data in raw_data.items():
+            for band, filtered_raw in data["filtered"].items():
+                save_path = f"{file_key}_{band}.fif"
+                filtered_raw.save(save_path, overwrite=True)
+                print(f"Saved: {save_path}")
+
+    print("All files loaded and filtered successfully!")
